@@ -43,19 +43,26 @@ function getContent(response: OpenRouterResponse): string {
 }
 
 export async function POST(request: Request) {
-  let body: AiRequestBody;
+  let body: unknown;
 
   try {
-    body = (await request.json()) as AiRequestBody;
+    body = await request.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  if (!body.message?.trim()) {
+  if (
+    typeof body !== "object" ||
+    body === null ||
+    !("message" in body) ||
+    typeof body.message !== "string" ||
+    !body.message.trim()
+  ) {
     return NextResponse.json({ error: "Message is required" }, { status: 400 });
   }
 
-  const modelType: ModelType = body.type ?? "text";
+  const typedBody = body as AiRequestBody;
+  const modelType: ModelType = typedBody.type ?? "text";
   const model = models[modelType] ?? models.text;
   const apiKey = process.env.OPENROUTER_API_KEY;
 
@@ -76,7 +83,7 @@ export async function POST(request: Request) {
     },
     body: JSON.stringify({
       model,
-      messages: [{ role: "user", content: body.message.trim() }],
+      messages: [{ role: "user", content: typedBody.message.trim() }],
       stream: false
     }),
     cache: "no-store"
@@ -85,12 +92,7 @@ export async function POST(request: Request) {
   if (!response.ok) {
     const fallback = `OpenRouter failed with status ${response.status}`;
     const errorText = await response.text();
-    return NextResponse.json(
-      {
-        error: errorText || fallback
-      },
-      { status: 502 }
-    );
+    return NextResponse.json({ error: errorText || fallback }, { status: 502 });
   }
 
   const data = (await response.json()) as OpenRouterResponse;
